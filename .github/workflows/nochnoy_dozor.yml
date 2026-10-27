@@ -1,0 +1,35 @@
+name: Nochnoy Dozor (storozh taygi)
+
+# Safety net: if the proxy run dies early, cron alone would leave the
+# proxy dead until the next 6h tick. Checks hourly and starts a
+# fresh run when none is active. Concurrency group = only one lives.
+
+on:
+  schedule:
+    - cron: '23 */1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  watch:
+    if: github.repository != 'X5Coder/VOLK'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Restart proxy if no run is active
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          N=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow sibirskiy_medved.yml \
+            --status in_progress --limit 1 --json databaseId -q 'length')
+          if [ "${N:-0}" -ge 1 ]; then
+            echo "proxy run ACTIVE - nothing to do."
+            exit 0
+          fi
+          echo "no active proxy run - dispatching a fresh USA Proxy run ..."
+          gh workflow run sibirskiy_medved.yml --repo "$GITHUB_REPOSITORY" --ref main \
+            && echo "dispatched OK" \
+            || echo "dispatch failed (workflow missing/disabled?) - will retry next tick"
